@@ -1,0 +1,13 @@
+{
+  "name": "the-room-behind-the-answer-render",
+  "private": true,
+  "type": "module",
+  "description": "Offline render pipeline for the film (not needed to view the site).",
+  "scripts": {
+    "build": "python3 build.py",
+    "probe": "node render/probe.mjs",
+    "score": "python3 render/score.py",
+    "render": "node render/capture.mjs 1920x1080x220 ../film.mp4"
+  },
+  "dependencies": { "playwright": "^1.56.0" }
+}
