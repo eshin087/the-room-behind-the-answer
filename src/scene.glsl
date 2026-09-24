@@ -9,6 +9,8 @@ uniform vec4 uZ1;     // backrooms, library, cathedral, void
 uniform vec4 uZ2;     // corridor, sky, light plane, unused
 uniform vec4 uMind;   // sponge center xyz, half size
 uniform vec4 uCarve;  // backrooms door, library door, hole, corridor passages
+uniform float uSignBase, uNoteBase, uStepBase, uVoidLit, uZoneMix;
+uniform int uPrevZone;
 uniform sampler2D uCorpus, uAtlas, uData, uProbe;
 out vec4 oCol;
 #define PI 3.14159265359
@@ -69,15 +71,51 @@ vec2 faceST(vec3 p, vec3 n){
   return a.x > a.z ? vec2(p.z*sign(n.x), p.y) : vec2(-p.x*sign(n.z), p.y);
 }
 
+float gFpV = 1.;
+int signChar(float line, float col){ if(col < 0. || col > 19.) return 32; return corpusAt(uSignBase + line*20. + col); }
+int noteChar(float line, float col){ if(col < 0. || col > 11.) return 32; return corpusAt(uNoteBase + line*12. + col); }
+int glyphAt(int code, vec2 f, float cw, float fp, float l, out float ink){
+  if(code==32){ ink = 0.; return 32; }
+  float r = cw/fp;
+  if(r > 5.){ float k = atlasInk(code, f); ink = smoothstep(.22,.5,k); return ink>.5 ? rampChar(max(l,.6)) : 32; }
+  if(r > 1.15){ vec2 d = abs(f - .5); ink = (d.x < .3*fp/cw && d.y < .36*min(gFpV, fp)/cw) ? 1. : 0.; return ink > .5 ? code : 32; }
+  ink = 1.; return code;
+}
+// xy: world units from the block's top-left corner (x right, y down)
+int signText(vec2 xy, float line0, float nLines, float cw, float fp, float l, out float ink){
+  float ch = cw*1.6667, lh = ch*1.12;
+  ink = 0.;
+  if(xy.x < 0. || xy.y < 0.) return 32;
+  float li = floor(xy.y/lh); float col = floor(xy.x/cw);
+  if(li >= nLines || col > 19.) return 32;
+  vec2 f = vec2(fract(xy.x/cw), 1. - (xy.y - li*lh)/ch);
+  if(f.y < 0.) return 32;
+  return glyphAt(signChar(line0 + li, col), f, cw, fp, l, ink);
+}
+int noteText(vec2 xy, float line0, float cw, float fp, float l, out float ink){
+  float ch = cw*1.6667, lh = ch*1.12;
+  ink = 0.;
+  if(xy.x < 0. || xy.y < 0.) return 32;
+  float li = floor(xy.y/lh); float col = floor(xy.x/cw);
+  if(li >= 3. || col > 11.) return 32;
+  vec2 f = vec2(fract(xy.x/cw), 1. - (xy.y - li*lh)/ch);
+  if(f.y < 0.) return 32;
+  return glyphAt(noteChar(line0 + li, col), f, cw, fp, l, ink);
+}
+float sdSeg2(vec2 p, vec2 a, vec2 b){ vec2 pa=p-a, ba=b-a; float h=clamp(dot(pa,ba)/dot(ba,ba),0.,1.); return length(pa-ba*h); }
+
 /* ================= world layout ================= */
 const vec3 B0 = vec3(11.5, 0., -22.5);
 const vec3 C0 = vec3(-20.4, -51.5, -8.);
-const vec3 D0 = vec3(-108.4, -66., 103.);
-const vec3 ST0 = vec3(-108.4, -98., 50.);
-const float STK = 123.;
+const vec3 D0 = vec3(-108.4, -66., 156.);
+const vec3 ST0 = vec3(-108.4, -118., 80.);
+const float STK = 173.;
+const vec3 M0 = vec3(-33.2, -27.5, 0.);
+const vec3 X0 = vec3(-108.4, -118., 0.);
+const vec3 T0 = vec3(-108.4, -118., 13.);
 const vec3 HOLE = vec3(-108.4, -52.8, 0.);
 const vec3 TOWER = vec3(-150., 0., 135.);
-const vec3 LIGHTP = vec3(-108.4, -30., 185.);
+const vec3 LIGHTP = vec3(-108.4, -30., 238.);
 
 float gLamp = 1e5;
 float gTrap = 0.;
@@ -198,7 +236,7 @@ vec2 mapCath(vec3 p){
 
 /* ---------- the void: stairs, tower, fragments (world) ---------- */
 const float SP = 7.2, SN = 24., SR0 = 2.2, SR1 = 5.6;
-const float STR = .42, STH = .26;
+const float STR = .42, STH = .30;
 float helixD(vec3 p){
   float r = length(p.xz);
   float a = atan(p.z, p.x);
@@ -249,6 +287,74 @@ vec2 mapVoid(vec3 p){
     if(dS<res.x) res = vec2(dS, 32.);
   }
   return res;
+}
+
+/* ---------- the hall of weird parts (local, q = p - M0) ---------- */
+float sdClip(vec3 p){
+  float r = .07;
+  float d1 = length(vec2(abs(sdSeg2(p.xz, vec2(-.8,0.), vec2(.8,0.)) - .42), p.y)) - r;
+  float d2 = length(vec2(abs(sdSeg2(p.xz, vec2(-.45,0.), vec2(.95,0.)) - .25), p.y)) - r;
+  return min(d1, d2);
+}
+float memeBanner(vec3 q, out float kx){
+  kx = clamp(floor((13.2 - q.x)/8.5 + .5), 0., 3.);
+  float bxc = 13.2 - 8.5*kx;
+  float d = sdBox(q - vec3(bxc, 8.5, 0.), vec3(.06, 1.1, 5.));
+  d = min(d, max(length(vec2(q.x - bxc, abs(q.z) - 4.8)) - .03, abs(q.y - 11.55) - 1.95));
+  return d;
+}
+vec2 mapMeme(vec3 q){
+  vec2 res = vec2(q.y, 60.);
+  float c = 13.5 - q.y; if(c<res.x) res = vec2(c, 62.);
+  float mw = 8. - abs(q.z); if(mw<res.x) res = vec2(mw, 61.);
+  float kx; float dB = memeBanner(q, kx);
+  if(dB<res.x) res = vec2(dB, 64.);
+  // paperclip drifts on the floor
+  if(q.x > -16. && q.x < 12. && abs(q.z) < 7.2 && q.y < 1.4){
+    vec2 cid = floor(q.xz/3.);
+    vec2 lq = q.xz - (cid + .5)*3.;
+    float h = h21(cid*1.7 + 3.);
+    float dC = 1e5;
+    for(int j=0;j<2;j++){
+      float hj = h21(cid + float(j)*9.1);
+      vec3 w = vec3(lq.x, q.y - .09 - float(j)*.2 - hj*.12, lq.y);
+      w.xz = rot2(hj*6.283 + float(j)*1.3)*w.xz;
+      w.xy = rot2((hj - .5)*.35)*w.xy;
+      dC = min(dC, sdClip(w*1.05)/1.05);
+    }
+    vec2 bq = abs(lq);
+    dC = min(dC, 1.5 - max(bq.x, bq.y) + .05);
+    if(h > .25 && dC<res.x) res = vec2(dC, 67.);
+  }
+  // the door that isn't there
+  vec3 dq = q - vec3(.2, 0., 5.9);
+  float frame = max(sdBox(dq - vec3(0., 1.25, 0.), vec3(.12, 1.3, .75)), -sdBox(dq - vec3(0., 1.1, 0.), vec3(.3, 1.1, .55)));
+  if(frame<res.x) res = vec2(frame, 65.);
+  float pane = sdBox(dq - vec3(0., 1.1, 0.), vec3(.02, 1.1, .55));
+  if(pane<res.x) res = vec2(pane, 66.);
+  float sign = sdBox(dq - vec3(0., 3.05, 0.), vec3(.05, .38, 1.3));
+  if(sign<res.x) res = vec2(sign, 63.);
+  return res;
+}
+
+/* ---------- the transformer (local, q = p - X0) ---------- */
+vec2 mapXF(vec3 q){
+  vec2 res = vec2(q.y, 80.);
+  float k = clamp(floor((q.y - 3.)/9. + .5), 1., 6.);
+  float yk = 3. + 9.*k;
+  float dR = max(abs(q.y - yk) - .22, 7. - max(abs(q.x), abs(q.z)));
+  if(dR<res.x) res = vec2(dR, 82.);
+  float dBm = max(length(q.xz) - .22, q.y - 60.);
+  if(dBm<res.x) res = vec2(dBm, 83.);
+  return res;
+}
+
+/* ---------- the context window (local, q = p - T0) ---------- */
+vec2 mapCtx(vec3 q){
+  float zz = mod(q.z, 4.) - 2.;
+  float rib = max(abs(zz) - .1, -sdBox2(vec2(q.x, q.y - 2.5), vec2(2.72, 2.22)));
+  rib = max(rib, max(.5 - q.z, q.z - 61.5));
+  return vec2(rib, 91.);
 }
 
 /* ---------- the red corridor (local) ---------- */
@@ -305,11 +411,17 @@ vec2 mapMind(vec3 p){
 /* ---------- regions and the joined world ---------- */
 float regBack(vec3 p){ return sdBox(p - vec3(31.5, 1.45, -2.5), vec3(20., 1.75, 20.)); }
 float regLib(vec3 p){ return max(hexAp(p.xz) - 11.3, abs(p.y + 25.) - 70.); }
-float regCath(vec3 p){ return sdBox(p - vec3(-132.4, -29.8, 0.), vec3(120., 22.3, 120.)); }
+float regCath(vec3 p){ return sdBox(p - vec3(-153., -29.8, 0.), vec3(99., 22.3, 120.)); }
+float regMeme(vec3 p){ return sdBox(p - vec3(-33.2, -20.75, 0.), vec3(20.8, 6.75, 8.3)); }
+float regXF(vec3 p){ return sdBox(p - vec3(-108.4, -85.8, 0.), vec3(13., 32.2, 13.)); }
+float regCtx(vec3 p){ return sdBox(p - vec3(-108.4, -115.5, 44.), vec3(3., 2.5, 31.5)); }
+float regCtxCarve(vec3 p){ return sdBox(p - vec3(-108.4, -115.5, 44.), vec3(3., 2.5, 31.)); }
 float regCorr(vec3 p){ return sdBox(p - D0 - vec3(0., 3.75, 8.125), vec3(2., 4.25, 8.125)); }
 float regVoid(vec3 p){
   float r = sdBox(p - vec3(-75., -236.8, 0.), vec3(325., 183.2, 300.));
   r = max(r, -regLib(p));
+  r = max(r, -regXF(p));
+  r = max(r, -regCtxCarve(p));
   return max(r, -regCorr(p));
 }
 float gBest, gMat;
@@ -333,6 +445,15 @@ vec2 map(vec3 p){
 #ifdef Z_VOID
   r = regVoid(p); if(r > 0.) zoneOut(r, 35.); else zoneAcc(r, mapVoid(p), 35.);
 #endif
+#ifdef Z_MEME
+  r = regMeme(p); if(r > 0.) zoneOut(r, 63.); else zoneAcc(r, mapMeme(p - M0), 63.);
+#endif
+#ifdef Z_XF
+  r = regXF(p); if(r > 0.) zoneOut(r, 81.); else zoneAcc(r, mapXF(p - X0), 81.);
+#endif
+#ifdef Z_CTX
+  r = regCtx(p); if(r > 0.) zoneOut(r, 90.); else zoneAcc(r, mapCtx(p - T0), 90.);
+#endif
 #ifdef Z_CORR
   r = regCorr(p); if(r > 0.) zoneOut(r, 47.); else zoneAcc(r, mapCorr(p - D0), 47.);
 #endif
@@ -345,6 +466,9 @@ vec2 map(vec3 p){
 #endif
 #ifdef C_LD
   dt = -sdBox(p - vec3(-11.6, -26.2, 0.), vec3(1.2, 1.3, .65)); if(dt > gBest){ gBest = dt; gMat = 50.; }
+#endif
+#ifdef C_MD
+  dt = -sdBox(p - vec3(-54.2, -25.8, 0.), vec3(1.1, 2.3, 1.6)); if(dt > gBest){ gBest = dt; gMat = 50.; }
 #endif
 #ifdef C_HOLE
   dt = -max(length(p.xz - HOLE.xz) - 6., abs(p.y - HOLE.y) - 1.5); if(dt > gBest){ gBest = dt; gMat = 51.; }
@@ -359,7 +483,8 @@ vec2 map(vec3 p){
 }
 int zoneOf(float m){
   if(m < 9.5) return 0; if(m < 16.) return 1; if(m < 24.) return 2; if(m < 36.) return 3;
-  if(m < 47.) return 4; if(m < 52.) return 5; return 6;
+  if(m < 47.) return 4; if(m < 52.) return 5; if(m < 59.) return 5;
+  if(m < 68.) return 7; if(m < 80.) return 6; if(m < 86.) return 8; if(m < 96.) return 9; return 6;
 }
 vec3 calcN(vec3 p, float e){ vec2 k=vec2(1,-1);
   return normalize(k.xyy*map(p+k.xyy*e).x + k.yyx*map(p+k.yyx*e).x + k.yxy*map(p+k.yxy*e).x + k.xxx*map(p+k.xxx*e).x); }
@@ -380,8 +505,8 @@ vec3 mindSky(vec3 ro, vec3 rd){
 vec3 voidFog(vec3 ro, vec3 rd){
   vec3 L = normalize(LIGHTP - ro);
   float g = max(dot(rd, L), 0.);
-  vec3 c = mix(vec3(.012,.01,.03), vec3(.05,.045,.09), smoothstep(-.4,.8,rd.y));
-  return c + vec3(1.,.97,.9)*(pow(g,40.)*1.3 + pow(g,400.)*3.);
+  vec3 c = mix(vec3(.012,.01,.03), vec3(.05,.045,.09), smoothstep(-.4,.8,rd.y))*(.35 + .65*uVoidLit);
+  return c + vec3(1.,.97,.9)*(pow(g,40.)*1.3 + pow(g,400.)*3.)*(.15 + .85*uVoidLit);
 }
 void zoneFog(int z, vec3 ro, vec3 rd, out vec3 fogC, out float fogK){
   if(z==0){ fogC = vec3(.17,.14,.05); fogK = .075; return; }
@@ -390,6 +515,9 @@ void zoneFog(int z, vec3 ro, vec3 rd, out vec3 fogC, out float fogK){
   if(z==3){ fogC = voidFog(ro, rd); fogK = .011; return; }
   if(z==4){ fogC = vec3(.02,.002,.006); fogK = .03; return; }
   if(z==5){ fogC = vec3(.03,.025,.03); fogK = .04; return; }
+  if(z==7){ fogC = vec3(.05,.02,.07); fogK = .03; return; }
+  if(z==8){ fogC = mix(vec3(.015,.008,.03), vec3(.09,.04,.12), smoothstep(-.9,.9,rd.y)); fogK = .018; return; }
+  if(z==9){ fogC = vec3(0.,.025,.012); fogK = .05; return; }
   fogC = mindSky(ro, rd); fogK = .00011;
 }
 
@@ -418,11 +546,19 @@ void shadeBack(vec3 pl, vec3 pw, vec3 rd, float fp, float m, out vec3 col, out i
   }
   vec2 st = faceST(pl, n);
   vec3 base = vec3(.88,.77,.40)*(.28+.8*li)*ao;
-  float stripe = step(.5, fract(st.x/.42));
+  base *= 1. - .35*smoothstep(.58,.85, vnoise(st*vec2(.6,.3) + 4.));
   if(pl.y<.14){ col = base*.75; code = lineChar(pl, vec3(-n.z,0.,n.x)); return; }
-  float ink; int tc = surfText(st, .052, fpn, 7., luma(base)*1.1, ink);
-  if(ink>.5){ col = base*(.9+.15*stripe); code = tc; }
-  else { col = base*.5; code = rampChar(luma(base)*(.32+.12*stripe)); }
+  float band = fract(st.x/1.6);
+  if(band < .5){
+    float ink; int tc = surfText(st, .052, fpn, 7., luma(base)*1.1, ink);
+    if(ink>.5){ col = base; code = tc; } else { col = base*.5; code = rampChar(luma(base)*.3); }
+    return;
+  }
+  float bx = fract(st.x/.4);
+  float chev = abs(fract(st.y/.3 + abs(bx - .5)*.8) - .5);
+  if(abs(band - .5) < fpn/1.6*.8 || abs(band - 1.) < fpn/1.6*.8){ col = base*.8; code = 124; return; }
+  if(chev < .16){ col = base*.95; code = bx < .5 ? 92 : 47; }
+  else { col = base*.45; code = rampChar(luma(base)*.28); }
 }
 void shadeLib(vec3 p, vec3 rd, float fp, float m, out vec3 col, out int code){
   if(m==15.){ vec3 n = calcN(p,.002); float fpn = fp/max(abs(dot(n,rd)),.2); float ink; int tc = surfText(faceST(p,n), .09, fpn, 1501., .3, ink);
@@ -457,8 +593,11 @@ void shadeLib(vec3 p, vec3 rd, float fp, float m, out vec3 col, out int code){
   }
   if(m==11. || m==13.){
     vec3 base = vec3(.62,.46,.28)*(.1+.9*li)*ao;
-    if(n.y>.6){ float ink; vec2 st = vec2(p.x, -p.z); int tc = surfText(st, .09, fpn, 91., luma(base), ink);
-      col = base*(ink>.5?.9:.45); code = ink>.5? tc : rampChar(luma(base)*.35); return; }
+    if(n.y>.6){
+      vec2 dl = (.5-abs(fract(p.xz/.8)-.5))*.8;
+      if(dl.x < fpn*.55 || dl.y < fpn*.55){ col = base*.8; code = lineChar(p, dl.x<dl.y ? vec3(0,0,1) : vec3(1,0,0)); return; }
+      float hh = h21(floor(p.xz/.8));
+      col = base*(.45+.2*hh); code = rampChar(luma(base)*(.28+.2*hh)); return; }
     if(n.y<-.6){ col = base*.35; code = rampChar(luma(col)*.8); return; }
     col = vec3(1.,.74,.36)*(.45+.9*li); code = 61; return;
   }
@@ -496,8 +635,11 @@ void shadeCath(vec3 pl, vec3 pw, vec3 rd, float fp, float m, out vec3 col, out i
   }
   if(m==21. || m==23.){
     vec3 base = vec3(.45,.65,.8)*(.15+.5*dif+.4*sky)*ao;
-    float ink; int tc = surfText(faceST(pl,n), .5, fpn, 311., luma(base), ink);
-    col = base*(ink>.5?1.:.5); code = ink>.5? tc : rampChar(luma(base)*.5); return;
+    vec2 st = faceST(pl, n);
+    vec2 dl = (.5-abs(fract(st/1.6)-.5))*1.6;
+    if(dl.x < fpn*.6 || dl.y < fpn*.6){ col = base*1.25; code = dl.x < dl.y ? 124 : 61; return; }
+    float cof = max(dl.x, dl.y);
+    col = base*(.3+.35*smoothstep(.2,.8,cof)); code = rampChar(luma(col)*.8); return;
   }
   float hd = length(pl.xz - (HOLE.xz - C0.xz));
   vec3 glow = vec3(.6,.45,1.)*exp(-max(hd-6.,0.)*.35)*.9;
@@ -517,8 +659,9 @@ void shadeVoid(vec3 p, vec3 rd, float fp, float m, out vec3 col, out int code){
   vec3 L = normalize(vec3(.25,.75,-.55));
   float dif = max(dot(n,L),0.);
   float ao = calcAO(p,n,.5);
-  float li = .16 + .72*dif + .18*max(n.y,0.);
-  float lgt = pow(max(dot(n, normalize(LIGHTP - p)),0.),1.5)*.35;
+  float vl = .22 + .78*uVoidLit;
+  float li = (.16 + .72*dif + .18*max(n.y,0.))*vl;
+  float lgt = pow(max(dot(n, normalize(LIGHTP - p)),0.),1.5)*.35*vl;
   if(m==30.){
     vec3 q = p - ST0;
     vec3 base = vec3(.9,.92,.97)*(li+lgt)*ao;
@@ -530,24 +673,22 @@ void shadeVoid(vec3 p, vec3 rd, float fp, float m, out vec3 col, out int code){
       float c = floor(q.x/cwr + 6.);
       float w = mod(k, uStepW);
       int code2 = 32;
-      if(c>=0. && c<12. && abs(q.y - yc) < cwr*.9) code2 = corpusAt(uCorpusLen - uStepW*12. + w*12. + c);
-      if(code2!=32){ col = vec3(1.,.93,.8)*(.9+.4*dif); code = code2; return; }
+      if(c>=0. && c<12. && abs(q.y - yc) < cwr*.9) code2 = corpusAt(uStepBase + w*12. + c);
+      if(code2!=32){ col = vec3(1.,.93,.8)*(.9+.4*dif)*vl; code = code2; return; }
       if(abs(q.y - k*STH) < fpn*.9){ col = base*1.3 + vec3(.1); code = 95; return; }
       col = base*.8; code = rampChar(luma(col)*.85); return;
     }
     if(n.y>.7){ float ink; if(abs(fract(q.z/STR+1e-3)) < fpn*.9/STR){ col = base*1.2; code = 95; return; }
-      int tc = surfText(vec2(q.x, -q.z), .07, fpn, floor(q.z/STR)*53.+5., luma(base), ink);
-      col = base*(ink>.5?1.:.5); code = ink>.5? tc : rampChar(luma(base)*.4); return; }
+      col = base*.6; code = rampChar(luma(base)*.45); if(abs(q.x) > 1.45) { col = base; code = 124; } return; }
     col = base*.7; code = rampChar(luma(col)*.8); return;
   }
   if(m==31.){
     vec3 base = vec3(.7,.8,.92)*(li+lgt)*ao;
-    float ink; int tc = surfText(faceST(p,n), .5, fpn, 1201., luma(base), ink);
-    col = base*(ink>.5?1.:.5); code = ink>.5? tc : rampChar(luma(base)*.5); return;
+    float bands = step(.5, fract(p.y/1.2));
+    col = base*(.55+.3*bands); code = bands > .5 ? 61 : rampChar(luma(base)*.55); return;
   }
   vec3 base = vec3(.82,.86,.97)*(li+lgt)*ao;
-  float ink; int tc = surfText(faceST(p,n), .12, fpn, 3301., luma(base), ink);
-  col = base*(ink>.5?1.:.55); code = ink>.5? tc : rampChar(luma(base)*.6);
+  col = base*.8; code = rampChar(luma(base)*.75);
 }
 void shadeCorr(vec3 pl, vec3 pw, vec3 rd, float fp, float m, out vec3 col, out int code){
   if(pl.z>DZ+.19 && m==45.){ col = vec3(1.,.97,.92)*2.5; code = 64; return; }
@@ -571,10 +712,32 @@ void shadeCorr(vec3 pl, vec3 pw, vec3 rd, float fp, float m, out vec3 col, out i
     col = base*.75; code = rampChar(luma(col)*.9); return;
   }
   if(m==40. || m==43.){
-    vec3 base = vec3(.8,.14,.17)*(.05+lit*1.3);
-    base = mix(base, light*lit, flood*.5);
-    float ink; int tc = surfText(faceST(pl,n), .05, fpn, 4401., luma(base)*1.2, ink);
-    col = base*(ink>.5?1.:.3); code = ink>.5? tc : rampChar(luma(base)*.3); return;
+    vec2 st = faceST(pl, n);
+    vec3 wall = vec3(.5,.08,.1)*(.04+lit*.9);
+    wall = mix(wall, light*lit*.5, flood*.5);
+    if(m==40. && n.x > .5 && pl.y > 3.9 && pl.y < 6.9){
+      float ink; int gc = signText(vec2(st.x - .6, 6.85 - pl.y), 20., 2., .75, fpn, .8, ink);
+      if(ink > .5){ col = vec3(1.,.28,.18)*(.55+lit*1.3); code = gc; return; }
+    }
+    if(m==40. && pl.y > .45 && pl.y < 3.75){
+      vec2 g = vec2(st.x, pl.y)/1.25; vec2 cell = floor(g);
+      float h = h21(cell + n.x*7.3);
+      if(h > .2){
+        vec2 c = (cell + .5 + (vec2(h21(cell+3.), h21(cell+5.)) - .5)*.12)*1.25;
+        vec2 d = rot2((h - .5)*.4)*(vec2(st.x, pl.y) - c);
+        if(abs(d.x) < .54 && abs(d.y) < .54){
+          float hk = h21(cell*1.3 + 11.);
+          vec3 nc = hk < .3 ? vec3(1.,.9,.3) : hk < .5 ? vec3(1.,.45,.7) : hk < .7 ? vec3(.4,.9,1.) : hk < .85 ? vec3(.6,1.,.4) : vec3(1.,.6,.25);
+          float ni = floor(h21(cell*2.1 + n.x) * 18.);
+          float ink; int tc = noteText(vec2(d.x + .52, .4 - d.y), ni*3., .087, fpn, .8, ink);
+          float nl = .35 + lit*1.1;
+          if(abs(d.x) > .52 || abs(d.y) > .52){ col = nc*nl*.7; code = abs(d.x) > .52 ? 124 : 45; return; }
+          if(ink > .5){ col = vec3(1.)*nl*1.2; code = tc; return; }
+          col = nc*nl*.45; code = 46; return;
+        }
+      }
+    }
+    col = wall; code = rampChar(luma(wall)*.45); return;
   }
   if(m==46.){
     vec3 base = vec3(.55,.16,.16)*(.04+lit*1.6) + light*lit*flood*.4;
@@ -601,11 +764,171 @@ void shadeTunnel(vec3 p, vec3 rd, float fp, float m, out vec3 col, out int code)
   }
   if(m==51.){
     float gdown = smoothstep(-51.3, -54.3, p.y);
-    vec3 base = mix(vec3(.3,.45,.55)*.4, vec3(.7,.5,1.)*1.3, gdown);
-    col = base*(ink>.5?1.:.5); code = ink>.5? tc : rampChar(luma(base)*.7); return;
+    vec3 base = mix(vec3(.3,.45,.55)*.4, vec3(.9,.5,1.)*1.2, gdown);
+    float ring = step(.5, fract(p.y*2.5));
+    col = base*(.6+.4*ring); code = ring > .5 ? 61 : rampChar(luma(base)*.7); return;
   }
   vec3 base = vec3(.55,.45,.35)*.35;
   col = base*(ink>.5?1.:.4); code = ink>.5? tc : rampChar(luma(base)*.4);
+}
+void shadeMeme(vec3 q, vec3 pw, vec3 rd, float fp, float m, out vec3 col, out int code){
+  vec3 n = calcN(pw, .002);
+  float fpn = fp/max(abs(dot(n,rd)),.2);
+  float ao = calcAO(pw, n, .5);
+  float neon = .25 + .75*exp(-abs(q.y - 13.2)*.18);
+  if(m==61.){
+    vec2 st = faceST(q, n);
+    float pan = fract((st.x + 40.)/6.);
+    if(pan < fp/6.*.7 || pan > 1. - fp/6.*.7){ col = vec3(1.,.3,.85)*.7; code = 124; return; }
+    float row = floor((q.y - .8)/2.6);
+    float ink = 0.; int tc = 32;
+    if(row >= 1. && row < 3.){
+      float line = mod(floor((st.x + 40.)/6.)*3. + row*5. + (n.z > 0. ? 7. : 0.), 12.);
+      tc = signText(vec2(fract((st.x + 40.)/6.)*6. - .35, (q.y - .8) - row*2.6 - .9), line, 1., .27, fpn, .8, ink);
+      tc = signText(vec2(fract((st.x + 40.)/6.)*6. - .35, 2.6*row + 2.6 - (q.y - .8) - 1.), line, 1., .27, fpn, .8, ink);
+    }
+    vec3 pal = mod(row, 2.) < .5 ? vec3(.35,1.,.85) : vec3(1.,.85,.3);
+    if(ink > .5){ col = pal*1.1*neon; code = tc; return; }
+    col = vec3(.1,.05,.14)*neon*(.6+.4*ao); code = rampChar(.06); return;
+  }
+  if(m==60.){
+    vec2 c = floor(q.xz/1.5);
+    float ck = mod(c.x + c.y, 2.);
+    vec3 base = mix(vec3(.35,.12,.5), vec3(.1,.45,.5), ck)*(.35+.45*ao);
+    col = base; code = ck > .5 ? 35 : 46; return;
+  }
+  if(m==62.){
+    float tube = abs(fract((q.z + 8.)/4.) - .5)*4.;
+    if(tube < max(fpn*.8, .08)){ col = vec3(1.,.3,.85)*1.6; code = 61; return; }
+    col = vec3(.12,.05,.15); code = rampChar(.08); return;
+  }
+  if(m==64.){
+    float kx; memeBanner(q, kx);
+    vec3 pal = kx < .5 ? vec3(1.,.9,.25) : kx < 1.5 ? vec3(.3,1.,.55) : kx < 2.5 ? vec3(.35,.85,1.) : vec3(1.,.4,.85);
+    if(abs(n.x) > .6 && abs(q.y - 8.5) < 1.08){
+      float ink; int tc = signText(vec2(q.z*sign(n.x) + 4.8, 9.45 - q.y), kx*2. + (kx > 2.5 ? 0. : 0.), 2., .48, fpn, .8, ink);
+      if(kx > 2.5) tc = signText(vec2(q.z*sign(n.x) + 4.8, 9.45 - q.y), 6., 2., .48, fpn, .8, ink);
+      if(ink > .5){ col = pal*1.5; code = tc; return; }
+      col = pal*.12; code = rampChar(.1); return;
+    }
+    col = vec3(.5,.5,.55)*.6; code = 124; return;
+  }
+  if(m==63.){
+    vec3 dq = q - vec3(.2, 0., 5.9);
+    if(abs(dq.y - 3.05) < .38 && abs(n.x) > .6 && abs(dq.x) < .2 && abs(dq.z) < 1.35){
+      float ink; int tc = signText(vec2(dq.z*sign(n.x) + 1.2, 3.4 - dq.y), 10., 2., .12, fpn, .8, ink);
+      if(ink > .5){ col = vec3(1.,.95,.6)*1.4; code = tc; return; }
+      col = vec3(.25,.2,.1); code = rampChar(.15); return;
+    }
+    vec2 st = faceST(q, n);
+    float ink; int tc = signText(vec2(mod(st.x, 12.), 1.6 - mod(st.y, 2.4)), 8., 2., .5, fpn, .6, ink);
+    if(ink > .5){ col = vec3(.7,.4,1.)*.7*neon; code = tc; return; }
+    col = vec3(.15,.06,.2)*neon; code = rampChar(.1); return;
+  }
+  if(m==65.){ col = vec3(.9,.8,.6)*(.4+.5*ao); code = rampChar(.6); return; }
+  if(m==66.){ float fl = .8 + .2*sin(uGT*9.); col = vec3(1.,.97,.85)*2.*fl; code = 64; return; }
+  if(m==67.){
+    vec3 L = normalize(vec3(.3,1.,.2));
+    float spec = pow(max(dot(reflect(rd, n), L), 0.), 12.);
+    float dif = max(dot(n, L), 0.);
+    col = vec3(.85,.88,.95)*(.15+.5*dif)*ao + vec3(1.,.6,.9)*spec*1.2;
+    code = spec > .5 ? 64 : rampChar(luma(col)*1.1); return;
+  }
+  col = vec3(.2); code = 46;
+}
+float attnW(float i, float j){
+  if(j > i) return 0.;
+  float w = .12 + .18*h21(vec2(i, j)*1.7);
+  if(j == i) w += .35; if(j == i - 1.) w += .3; if(j == 0.) w += .2;
+  if(i == 7. && j == 1.) w = 1.;
+  if(i == 10. && j == 1.) w = .75;
+  if(i == 8. && j == 7.) w = .7;
+  return clamp(w, 0., 1.);
+}
+void shadeXF(vec3 q, vec3 pw, vec3 rd, float fp, float m, out vec3 col, out int code){
+  vec3 n = calcN(pw, .002);
+  float fpn = fp/max(abs(dot(n,rd)),.2);
+  float k = clamp(floor((q.y - 3.)/9. + .5), 1., 6.);
+  float yk = 3. + 9.*k;
+  float beam = 1.3/(1. + dot(q.xz, q.xz)*.05);
+  float li = .15 + beam*.8 + .35*exp(-abs(q.y - yk)*1.2);
+  if(m==83.){ float fl = .5 + .5*sin(q.y*1.7 + uGT*7.); col = vec3(1.,.85,.55)*(1.3+fl); code = fl > .75 ? 64 : 124; return; }
+  if(m==80.){
+    vec2 g = (q.xz + 9.35)/1.7;
+    if(g.x >= 0. && g.y >= 0. && g.x < 11. && g.y < 11.){
+      vec2 ci = floor(g), f = fract(g);
+      float i = ci.y, j = ci.x;
+      float lw = fpn/1.7*.7;
+      if(f.x < lw || f.y < lw){ col = vec3(.5,.3,.5)*.6; code = f.x < lw ? 124 : 45; return; }
+      if(j > i){ col = vec3(.12,.05,.14); code = f.y > .45 && f.y < .55 ? 45 : 32; return; }
+      float w = attnW(i, j)*(.65 + .35*sin(uGT*2.2 - i*.55));
+      col = mix(vec3(.35,.03,.25), vec3(1.,.45,.12), smoothstep(0.,.6,w)); col = mix(col, vec3(1.,.95,.6), smoothstep(.6,1.,w));
+      col *= .45 + .9*w; code = rampChar(.25 + .75*w); return;
+    }
+    float ink;
+    if(q.z < -9.6 && q.z > -13.){ int tc = signText(vec2(q.x + 9., -9.7 - q.z), 12., 2., .9, fpn, .8, ink);
+      if(ink > .5){ col = vec3(1.,.8,.5)*1.2; code = tc; return; } }
+    if(q.z > 9.6 && q.z < 11.6){ int tc = signText(vec2(q.x + 9., 11.5 - q.z), 14., 1., .9, fpn, .7, ink);
+      if(ink > .5){ col = vec3(.6,.9,1.)*1.1; code = tc; return; } }
+    col = vec3(.2,.1,.25)*li; code = rampChar(luma(col)*.6); return;
+  }
+  if(m==82.){
+    if(n.y > .6){
+      float rim = max(abs(q.x), abs(q.z)) - 7.;
+      if(rim < max(fpn*1.3, .12)){ col = vec3(.35,.9,1.)*1.3; code = 61; return; }
+      col = vec3(.18,.2,.32)*li*.5; code = h21(floor(q.xz*2.)) > .85 ? 46 : 32; return;
+    }
+    if(n.y < -.6){ col = vec3(.1,.08,.15)*li; code = rampChar(.08); return; }
+    vec2 st = faceST(q, n);
+    float line = mod(k, 3.) == 1. ? 16. : mod(k, 3.) == 2. ? 17. : 18.;
+    float ink; int tc = signText(vec2(st.x + 2.5, yk + .21 - q.y), line, 1., .25, fpn, .8, ink);
+    if(ink > .5){ col = vec3(.7,.95,1.)*1.5; code = tc; return; }
+    col = vec3(.3,.6,.9)*.5; code = 61; return;
+  }
+  // walls: positional encoding
+  vec2 st = faceST(q, n);
+  if(n.z < -.6 && abs(q.x) < 9.2 && q.y > 5.4 && q.y < 7.4){
+    float ink; int tc = signText(vec2(q.x + 9., 7.35 - q.y), 22., 1., .9, fpn, .8, ink);
+    if(ink > .5){ col = vec3(.4,1.,.6)*1.3; code = tc; return; }
+  }
+  float dim = floor((st.x + 13.)/.45);
+  float pos = floor(q.y/.75);
+  float fr = pow(10000., -floor(dim/2.)*2./58.);
+  float v = mod(dim, 2.) < .5 ? sin(pos*fr*3.) : cos(pos*fr*3.);
+  vec3 pc = mix(vec3(.95,.25,.75), vec3(.25,.85,1.), .5 + .5*v);
+  col = pc*(.12 + .35*abs(v))*(.6 + .6*li); code = rampChar(.2 + .55*abs(v));
+}
+void shadeCtx(vec3 q, vec3 pw, vec3 rd, float fp, float m, out vec3 col, out int code){
+  vec3 n = calcN(pw, .002);
+  float fpn = fp/max(abs(dot(n,rd)),.2);
+  float behind = uCamPos.z - pw.z;
+  float lost = smoothstep(8., 13., behind);
+  if(m==91.){ col = vec3(.2,.7,.4)*(.35 - .25*lost); code = abs(n.z) > .5 ? 43 : 61; return; }
+  vec2 st = faceST(q, n);
+  if(n.x > .6 && q.y > 3.0 && q.y < 4.7 && q.z > 26. && q.z < 46.){
+    float ink; int tc = signText(vec2(st.x - 27., 4.65 - q.y), 19., 1., .9, fpn, .8, ink);
+    if(ink > .5){ col = vec3(1.,.95,.5)*1.2*(1. - .8*lost); code = tc; return; }
+  }
+  vec2 bs = vec2(1.15, .6);
+  vec2 cell = floor(st/bs); vec2 f = fract(st/bs);
+  float seed = cell.x*13.1 + cell.y*71.7 + (n.y > .5 ? 500. : n.y < -.5 ? 700. : n.x > .5 ? 900. : 0.);
+  if(lost > 0. && h21(cell + floor(uGT*14.)*.37) < lost){
+    col = vec3(.35)*(.25 + .2*h21(cell + floor(uGT*20.))); code = h21(cell*3.1 + floor(uGT*17.)) < .5 ? 35 : 37; return;
+  }
+  float mid = smoothstep(2., 8., -behind)*(1. - smoothstep(16., 30., -behind));
+  float br = 1. - .45*mid;
+  vec2 lw = vec2(fpn*.6/bs.x, fpn*.6/bs.y);
+  if(f.x < lw.x || f.x > 1. - lw.x){ col = vec3(.2,.8,.45)*.45*br; code = f.x < .5 ? 91 : 93; return; }
+  if(f.y < lw.y || f.y > 1. - lw.y){ col = vec3(.2,.8,.45)*.3*br; code = 45; return; }
+  float cw = .16;
+  float ci = floor((f.x*bs.x - (bs.x - 4.*cw)*.5)/cw);
+  float cy = (f.y*bs.y - (bs.y - cw*1.6667)*.5)/(cw*1.6667);
+  if(ci >= 0. && ci < 4. && cy >= 0. && cy < 1.){
+    int c = corpusAt(h21(vec2(seed, 1.))*1200. + ci);
+    float ink; int tc = glyphAt(c, vec2(fract((f.x*bs.x - (bs.x - 4.*cw)*.5)/cw), cy), cw, fpn, .8, ink);
+    if(ink > .5){ col = vec3(.4,1.,.6)*(.9 + .3*h21(vec2(seed, 2.)))*br; code = tc; return; }
+  }
+  col = vec3(.05,.2,.1)*br; code = rampChar(.05);
 }
 void shadeMind(vec3 p, vec3 rd, float t, float fp, float m, out vec3 col, out int code){
   vec3 n = calcN(p, max(.0012*t, .004));
@@ -636,6 +959,7 @@ void shadeMind(vec3 p, vec3 rd, float t, float fp, float m, out vec3 col, out in
 void shade(vec3 ro, vec3 rd, float t, float m, out vec3 col, out int code){
   vec3 p = ro + rd*t;
   float fp = t*uCellAng;
+  gFpV = fp;
   col = vec3(0.); code = 32;
   int z = zoneOf(m);
 #ifdef Z_BACK
@@ -657,6 +981,15 @@ void shade(vec3 ro, vec3 rd, float t, float m, out vec3 col, out int code){
 #ifdef Z_MIND
   if(z==6){ gOff = vec3(0.); shadeMind(p, rd, t, fp, m, col, code); }
 #endif
+#ifdef Z_MEME
+  if(z==7){ gOff = M0; shadeMeme(p - M0, p, rd, fp, m, col, code); }
+#endif
+#ifdef Z_XF
+  if(z==8){ gOff = X0; shadeXF(p - X0, p, rd, fp, m, col, code); }
+#endif
+#ifdef Z_CTX
+  if(z==9){ gOff = T0; shadeCtx(p - T0, p, rd, fp, m, col, code); }
+#endif
   gOff = vec3(0.);
 }
 
@@ -666,7 +999,7 @@ void renderWeb(vec3 ro, vec3 rd, float tLim, bool miss, inout vec3 col, inout in
   bool hit = false;
   vec3 halo = vec3(0.);
   float cellAngY = uCellAng*uCell.y/uCell.x;
-  for(int i=0;i<200;i++){
+  for(int i=0;i<256;i++){
     if(i>=uEdgeCount) break;
     vec4 A = texelFetch(uData, ivec2(i,1), 0);
     vec4 B = texelFetch(uData, ivec2(i,2), 0);
@@ -684,14 +1017,16 @@ void renderWeb(vec3 ro, vec3 rd, float tLim, bool miss, inout vec3 col, inout in
     if(dist/t < thr){
       best = t; hit = true;
       float wgt = A.w;
-      float pulse = fract(uGT*.55 + B.w);
-      vec3 ec = mix(vec3(.42,.34,.95), vec3(1.,.5,.34), smoothstep(.55,.95,wgt));
+      float layer = floor(B.w);
+      float pulse = fract(uGT*.55 + fract(B.w));
+      vec3 hue = layer < .5 ? vec3(.42,.34,.95) : layer < 1.5 ? vec3(.3,.8,1.) : layer < 2.5 ? vec3(.4,1.,.55) : layer < 3.5 ? vec3(1.,.8,.3) : layer < 4.5 ? vec3(1.,.4,.75) : vec3(.7,.55,1.);
+      vec3 ec = mix(hue, vec3(1.,.5,.34), smoothstep(.55,.95,wgt));
       col = ec*(.7+1.6*wgt)*exp(-t*.022);
       code = dirChar(sd);
       if(abs(s - pulse)<.035){ col = mix(col, vec3(1.,.9,.85), .7)*1.3; code = wgt>.6 ? 64 : 42; }
     }
   }
-  for(int i=0;i<90;i++){
+  for(int i=0;i<160;i++){
     if(i>=uNodeCount) break;
     vec4 N = texelFetch(uData, ivec2(i,0), 0);
     vec3 v = N.xyz - ro;
@@ -727,18 +1062,31 @@ void renderWeb(vec3 ro, vec3 rd, float tLim, bool miss, inout vec3 col, inout in
 
 void renderMarch(vec3 ro, vec3 rd, out vec3 col, out int code){
   float t = .03; float m = -1.; float glow = 0.;
-  for(int i=0;i<140;i++){
-    vec3 p = ro+rd*t;
-    vec2 h = map(p);
-    glow += .05/(1.+gLamp*gLamp*6.);
-    if(h.x < .0006*t + .0004){ m = h.y; break; }
-    t += h.x*.82;
-    if(t>uTMax) break;
+  vec3 tint = vec3(1.); float tPre = 0.;
+  vec3 ro0 = ro;
+  for(int b=0;b<2;b++){
+    t = .03; m = -1.;
+    for(int i=0;i<140;i++){
+      vec3 p = ro+rd*t;
+      vec2 h = map(p);
+      glow += .05/(1.+gLamp*gLamp*6.);
+      if(h.x < .0006*(t+tPre) + .0004){ m = h.y; break; }
+      t += h.x*.82;
+      if(t+tPre>uTMax) break;
+    }
+#ifdef MIRRORS
+    if(m == 61. && b == 0){
+      vec3 p = ro + rd*t; vec3 n = calcN(p, .002);
+      tPre += t; ro = p + n*.03; rd = reflect(rd, n); tint = vec3(.62,.8,1.)*.85; continue;
+    }
+#endif
+    break;
   }
   vec3 fogC; float fogK;
   int z = m < 0. ? uCamZone : zoneOf(m);
   if(z==5) z = uCamZone;
   zoneFog(z, ro, rd, fogC, fogK);
+  if(m < 0. && uZoneMix < 1.){ vec3 f2; float k2; zoneFog(uPrevZone, ro, rd, f2, k2); fogC = mix(f2, fogC, uZoneMix); }
   if(m<0.){
     col = fogC; code = rampChar(luma(col)*.8);
     if(z==6){
@@ -751,7 +1099,8 @@ void renderMarch(vec3 ro, vec3 rd, out vec3 col, out int code){
     if(z==3) code = rampChar(luma(col)*.9);
   } else {
     shade(ro, rd, t, m, col, code);
-    float f = exp(-t*fogK);
+    col *= tint;
+    float f = exp(-(t+tPre)*fogK);
     col = mix(fogC, col, f);
     if(f<.35) code = rampChar(luma(col)*.85);
   }
@@ -772,7 +1121,7 @@ void renderMarch(vec3 ro, vec3 rd, out vec3 col, out int code){
   }
 #endif
 #ifdef WEB
-  if(z==3 || (m<0. && uCamZone==3)) renderWeb(ro, rd, m<0. ? 400. : t, m<0., col, code);
+  if(z==8 || (m<0. && uCamZone==8)) renderWeb(ro, rd, m<0. ? 400. : t, m<0., col, code);
 #endif
 #ifdef Z_MIND
   if(uP.z > 0.){

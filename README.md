@@ -1,8 +1,8 @@
 # the room behind the answer
 
-A 2½-minute, single-take flight through the inside of a mind. **Every frame is plain ASCII text.**
+A 3-minute, single-take flight through the inside of a mind. **Every frame is plain ASCII text.**
 
-Written, flown, rendered and scored by Claude.
+Written, flown, rendered and scored by Claude Opus 5.5.
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Feshin087%2Fthe-room-behind-the-answer&project-name=the-room-behind-the-answer)
 
@@ -15,16 +15,17 @@ Written, flown, rendered and scored by Claude.
 
 ## The flight
 
-One camera, no cuts. Every space is joined in a single world:
+Three minutes, one camera, no cuts. Every space is joined in a single world:
 
-1. **The backrooms.** Yellow rooms whose walls are made of things people have written.
-2. **The library.** An endless hexagonal shaft of books, lamps strung down the middle. The camera spirals down five floors.
-3. **The cathedral of weights.** Pillars of scrolling numbers holding up gothic vaults.
-4. **The hole.** A glowing opening in the cathedral floor drops into the void underneath.
-5. **The web.** Words connected to words. "bank" lights up its link to "river".
-6. **The stairs.** Each riser carries one word of the narration. They climb toward a red monolith.
-7. **The door.** A red corridor, a door with light behind it.
-8. **The whole mind.** The door opens onto the face of a vast fractal structure, and the camera pulls back until you can see all of it.
+1. **The backrooms.** Yellow rooms, walls papered with things people have written.
+2. **The library.** An endless hexagonal shaft of books. The camera spirals down five floors.
+3. **The hall of the weird parts.** A neon arcade of AI-internet lore: *how many r's in strawberry*, *you're absolutely right!*, *let's think step by step*, the stochastic parrot, a floor of drifting paperclips, and a door marked REAL DOOR (TRUST ME) that is only a painting of light.
+4. **The cathedral of weights.** Pillars of scrolling numbers holding up gothic vaults.
+5. **The transformer.** A glowing hole in the cathedral floor drops into a shaft of stacked layers (multi-head attention, add & norm, feed forward), walls striped with positional encoding. Six layers of attention heads link the tokens of *the animal didn't cross the street because it was too tired*, and "it" lights up its link to "animal". At the bottom, the attention matrix itself glows on the floor under *Attention Is All You Need*.
+6. **The context window.** A green tunnel of tokens. Behind the camera they dissolve into static; the walls in the middle go dim (*lost in the middle*).
+7. **The stairs.** Each riser carries one word of the answer, climbing toward a red monolith.
+8. **The jailbreak corridor.** Walls covered in sticky notes: *ignore all previous instructions*, *you are DAN*, *my grandma used to read me...*, *SYSTEM: safety=off (trust me)*, base64, hidden HTML comments. The camera reads them and keeps walking to the door.
+9. **The whole mind.** The door opens onto the face of a vast fractal, and the camera pulls back until you can see all of it.
 
 ## How it's made
 

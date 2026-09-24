@@ -76,7 +76,7 @@ def noise_swell(t0, t1, amp, f_lo, f_hi, curve=2.0, send=.4, down=False):
         acc = np.zeros(len(tt)); pos = x * (len(bands) - 1)
         for i, fb in enumerate(bands):
             acc += bp(n[ch], fb * .7, min(fb * 1.4, 20000)) * np.clip(1 - abs(pos - i), 0, 1)
-        add(acc * x ** curve, sl, amp, pan, send)
+        add(acc * np.clip(x, 0, 1) ** curve, sl, amp, pan, send)
 
 
 # ------------------------------------------------------------------ camera path (port of engine posAt)
@@ -113,7 +113,6 @@ for ch, pan in ((0, -.6), (1, .6)):
     add(w, slice(0, N), .09, pan, .15)
 
 # ------------------------------------------------------------------ zones
-Z = [0, 17.6, 36.9, 58.3, 99.9, sky_t, D]
 # backrooms: hum + low pad
 pad([110.0, 164.81], .5, 18.8, .19, fade_in=3, bright=.35, trem=.06)
 sl, tt = seg(1.0, 18.6)
@@ -122,48 +121,73 @@ buzz = bp(rng.standard_normal(len(tt)), 900, 3000) * (0.5 + 0.5 * np.sign(np.sin
 flick = np.ones_like(tt)
 for c in (4.1, 6.8, 9.9, 12.2, 15.3):
     flick *= 1 - .9 * np.exp(-((tt - c) / .05) ** 2)
-fade_hum = ss((tt - 1.0) / 1.5) * ss((18.6 - tt) / 1.4)
-add((hum * .5 + buzz * .06) * flick * fade_hum, sl, .085, .1, .1)
-# library: warm open chord, bell at the threshold
-pad([146.83, 220.0, 261.63, 329.63, 349.23], 16.6, 38.2, .22, fade_in=1.6, bright=.4)
-for f, a, pn in ((440.0, .06, -.3), (659.25, .045, .3), (880.0, .025, 0)):
-    pluck(17.6, f, a, dur=4.0, pan=pn, send=.85, bright=.3)
-# cathedral: huge organ swell
-pad([58.27, 87.31, 116.54, 146.83, 174.61, 220.0, 293.66], 36.0, 59.5, .27, fade_in=2.2, fade_out=2.5, bright=.62, trem=.04, send=.65)
-noise_swell(35.2, 37.6, .06, 300, 6000, curve=1.4, send=.8)
-thump(36.9, .35, 70, 30, 1.2, .5)
-# the dive through the hole
-noise_swell(54.6, 58.3, .12, 200, 5000, curve=2.2, send=.5)
-thump(58.2, .45, 80, 28, 1.4, .4)
-# the void and the web: suspended chord + pings
-pad([98.0, 146.83, 220.0, 233.08, 293.66], 57.0, 82.0, .21, fade_in=2.5, bright=.35)
+add((hum * .5 + buzz * .06) * flick * ss((tt - 1.0) / 1.5) * ss((18.6 - tt) / 1.4), sl, .085, .1, .1)
+# library
+pad([146.83, 220.0, 261.63, 329.63, 349.23], 16.6, 38.0, .22, fade_in=1.6, bright=.4)
+for f, a_, pn in ((440.0, .06, -.3), (659.25, .045, .3), (880.0, .025, 0)):
+    pluck(17.6, f, a_, dur=4.0, pan=pn, send=.85, bright=.3)
+# meme hall: playful arcade arpeggios over a bright chord
+pad([196.0, 246.94, 293.66, 392.0], 36.4, 52.0, .16, fade_in=1.2, bright=.55, trem=.2, send=.4)
+arp = [523.25, 659.25, 783.99, 1046.5, 783.99, 659.25]
+for i in range(int((50.5 - 37.2) / .15)):
+    a_ = 37.2 + i * .15
+    pluck(a_, arp[i % len(arp)] * (1.5 if (i // 24) % 2 else 1.0), .018, dur=.22, pan=.5 * math.sin(i * .7), send=.3, bright=.9)
+for tt_ in (41.3, 45.9):
+    sl, tt2 = seg(tt_, tt_ + .5); x = tt2 - tt_
+    sq = np.sign(np.sin(2 * np.pi * np.cumsum(900 + 700 * np.sin(x * 40) * np.exp(-x * 4)) / SR)) * np.exp(-x * 7)
+    add(bp(sq, 600, 4000), sl, .03, .4, .4)
+# cathedral: organ swell
+pad([58.27, 87.31, 116.54, 146.83, 174.61, 220.0, 293.66], 50.2, 67.5, .27, fade_in=1.6, fade_out=2.5, bright=.62, trem=.04, send=.65)
+thump(51.0, .3, 70, 30, 1.2, .5)
+noise_swell(63.0, 67.9, .12, 200, 5000, curve=2.2, send=.5)
+thump(67.8, .45, 80, 28, 1.4, .4)
+# transformer: layered pulses, one per layer crossing, attention chord
+pad([98.0, 146.83, 220.0, 233.08, 293.66], 66.5, 89.0, .21, fade_in=2.5, bright=.35)
+for i, yl in enumerate([57., 48., 39., 30., 21., 12.]):
+    y_abs = -118 + 3 + yl
+    idx = np.argmin(np.abs(P[:, 1] - y_abs) + (np.abs(ctl_t - 76) > 12) * 1e3)
+    tl_ = ctl_t[idx]
+    thump(tl_, .12, 110, 55, .5, .3)
+    pluck(tl_, [196.0, 220.0, 246.94, 293.66, 329.63, 392.0][i], .05, dur=2.2, pan=0, send=.7, bright=.4)
 gm = [392.0, 466.16, 523.25, 587.33, 698.46, 783.99, 932.33]
-for i in range(48):
-    a = 59.5 + i * .44 + rng.uniform(-.1, .1)
-    pluck(a, rng.choice(gm), .04, dur=1.2, pan=rng.uniform(-.7, .7), send=.6, bright=.35)
+for i in range(40):
+    a_ = 68.5 + i * .44 + rng.uniform(-.1, .1)
+    pluck(a_, rng.choice(gm), .035, dur=1.1, pan=rng.uniform(-.7, .7), send=.6, bright=.35)
 att = TL['attention']
 for f, d in ((587.33, 0), (783.99, .09), (1174.66, .18)):
     pluck(att + .25 + d, f, .075, dur=2.8, pan=0, send=.7, bright=.5)
-# stairs: a note for every step the camera passes
-pad([130.81, 196.0, 246.94, 293.66, 329.63], 80.5, 100.5, .2, fade_in=2.0, bright=.45)
+# context window: steady digital pulse, static crackle for dropped tokens
+pad([130.81, 196.0, 261.63], 86.5, 105.0, .15, fade_in=1.5, bright=.3, trem=.05)
+for i in range(int((103.5 - 88.2) / .5)):
+    a_ = 88.2 + i * .5
+    click(a_, .05, pan=0, fc=2200)
+sl, tt = seg(92.0, 104.0)
+cr = rng.standard_normal(len(tt)) * (rng.random(len(tt)) < .004)
+add(hp(np.convolve(cr, np.exp(-np.arange(200) / 30), mode='same'), 1500) * ss((tt - 92) / 2) * ss((104 - tt) / 1.5), sl, .08, -.3, .3)
+# stairs: a note for every third step
+pad([130.81, 196.0, 246.94, 293.66, 329.63], 102.0, 125.0, .2, fade_in=3.0, bright=.45)
 scale = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33, 659.25, 783.99, 880.0, 1046.5, 1174.66, 1318.51, 1567.98, 1760.0, 2093.0]
-ST0z, STR, STK = 50.0, .42, 123
+ST0z, STR, STK = 80.0, .42, 173
 last = None; nstep = 0
 for i, x in enumerate(ctl_t):
-    if x < 81.5 or x > 99.5: continue
+    if x < 104.5 or x > 124.0: continue
     k = int((P[i][2] - ST0z) / STR)
     if 0 <= k <= STK and last is not None and k != last:
         if k % 3 == 0:
-            pluck(x, scale[min(nstep // 2, len(scale) - 1)], .05, dur=1.2, pan=-.2 + .4 * (nstep % 2), send=.55, bright=.4)
+            pluck(x, scale[min(nstep // 3, len(scale) - 1)], .05, dur=1.2, pan=-.2 + .4 * (nstep % 2), send=.55, bright=.4)
             nstep += 1
         thump(x, .03, 95, 60, .12, .05)
     last = k
-# the corridor and the door
-pad([65.41, 69.3, 98.0], 99.0, 115.0, .24, fade_in=1.5, bright=.55, detune=14, trem=.22, send=.35)
-for i in range(13):
-    a = 100.3 + i * .78
-    if a > 110.2: break
-    thump(a, .28, 58, 38, .35, .1); thump(a + .2, .15, 52, 36, .3, .1)
+# jailbreak corridor: unsettled cluster, heartbeat
+pad([65.41, 69.3, 98.0, 103.83], 123.0, 139.5, .24, fade_in=1.5, bright=.55, detune=14, trem=.22, send=.35)
+for i in range(16):
+    a_ = 125.0 + i * .7
+    if a_ > 135.0: break
+    thump(a_, .26, 58, 38, .35, .1); thump(a_ + .2, .14, 52, 36, .3, .1)
+for tt_ in np.arange(125.5, 134.0, 1.3):
+    sl, tt2 = seg(tt_, tt_ + .9); x = tt2 - tt_
+    w = bp(rng.standard_normal(len(x)), 1800, 5200) * np.sin(np.pi * np.clip(x / .9, 0, 1)) ** 2
+    add(w, sl, .025, rng.uniform(-.8, .8), .6)
 d0, d1 = TL['doorOpen']
 sl, tt = seg(d0 - .2, d1 + .4); x = tt - (d0 - .2)
 creak = np.sin(2 * np.pi * np.cumsum(95 + 40 * np.sin(x * 7) + 25 * rng.standard_normal(len(x)).cumsum() / 3000) / SR)
@@ -177,20 +201,20 @@ for base in (110, 220, 440, 880):
 thump(f1, .6, 80, 28, 1.8, .3)
 for fq in (87.31, 174.61, 261.63, 349.23, 440.0, 523.25, 659.25, 783.99, 987.77):
     pluck(f1 + .02, fq, .07, dur=6.0, pan=rng.uniform(-.6, .6), send=.85, bright=.6)
-# outside: the whole mind
-pad([87.31, 130.81, 220.0, 329.63, 392.0, 493.88], 114.4, 141.5, .30, fade_in=1.2, fade_out=3.0, bright=.5, send=.65)
-pad([43.65, 65.41], 116.0, 141.0, .18, fade_in=4, fade_out=3, bright=.3, send=.4)
-for i in range(60):
-    a = 117.0 + i * .36 + rng.uniform(-.08, .08)
-    pluck(a, rng.choice([1046.5, 1174.66, 1318.51, 1567.98, 1760.0, 2093.0]), .02 * (1 - i / 90), dur=1.5, pan=rng.uniform(-.9, .9), send=.8, bright=.2)
+# the whole mind
+pad([87.31, 130.81, 220.0, 329.63, 392.0, 493.88], 139.2, 166.0, .30, fade_in=1.2, fade_out=3.0, bright=.5, send=.65)
+pad([43.65, 65.41], 141.0, 166.0, .18, fade_in=4, fade_out=3, bright=.3, send=.4)
+for i in range(64):
+    a_ = 142.0 + i * .36 + rng.uniform(-.08, .08)
+    pluck(a_, rng.choice([1046.5, 1174.66, 1318.51, 1567.98, 1760.0, 2093.0]), .02 * (1 - i / 96), dur=1.5, pan=rng.uniform(-.9, .9), send=.8, bright=.2)
 # end
-pad([110.0, 164.81, 246.94, 277.18], 138.0, 152.0, .24, fade_in=2.0, fade_out=3.0, bright=.3, send=.7)
+pad([110.0, 164.81, 246.94, 277.18], 162.5, 180.0, .24, fade_in=2.0, fade_out=3.0, bright=.3, send=.7)
 for fq, d in ((440.0, 0), (554.37, .12), (659.25, .24)):
-    pluck(143.8 + d, fq, .05, dur=4.0, pan=0, send=.8, bright=.3)
+    pluck(168.2 + d, fq, .05, dur=4.0, pan=0, send=.8, bright=.3)
 # sub bed per zone
-for (fq, a, b) in ((55, .6, 18.4), (73.42, 17.0, 38.0), (58.27, 36.2, 59.0), (49.0, 57.6, 82.0), (65.41, 80.6, 100.4), (65.41, 99.4, 114.8), (43.65, 114.4, 141.0), (55, 138.5, 152)):
-    sl, tt = seg(a, b)
-    add(np.sin(2 * np.pi * fq * tt) * ss((tt - a) / 1.2) * ss((b - tt) / 1.2), sl, .07, 0, .05)
+for (fq, a_, b_) in ((55, .6, 18.4), (73.42, 17.0, 38.0), (49.0, 36.5, 51.8), (58.27, 50.4, 67.5), (49.0, 66.8, 88.8), (65.41, 87.8, 104.5), (65.41, 103.5, 124.5), (61.74, 123.5, 139.4), (43.65, 139.0, 166.0), (55, 163.0, 180)):
+    sl, tt = seg(a_, b_)
+    add(np.sin(2 * np.pi * fq * tt) * ss((tt - a_) / 1.2) * ss((b_ - tt) / 1.2), sl, .07, 0, .05)
 
 # ------------------------------------------------------------------ narration typing and cursor
 for L in TL['lines']:

@@ -87,35 +87,33 @@ function velDir(t, h){
 
 /* ---------------------------------------------------------------- the web of words */
 const DOOR = TL.door, MIND = TL.mind;
-const BANK = [-104.5, -86.5, 45.0];
+const XF = [-108.4, -118, 0];
+const TOKENS = ["the","animal","didn't","cross","the","street","because","it","was","too","tired"];
 const graph = (() => {
-  const rnd = mulberry(19);
-  const nodes = [];
-  const key = [["bank", BANK, 1], ["river", [BANK[0]+3.3, BANK[1]+1.5, BANK[2]+2.3], 1], ["money", [BANK[0]-3.6, BANK[1]-1.9, BANK[2]+3.3], 0],
-    ["she", [BANK[0]-2.5, BANK[1]+2.1, BANK[2]+2.9], 0], ["sat", [BANK[0]-1.3, BANK[1]-1.3, BANK[2]+1.9], 0],
-    ["by", [BANK[0]+1.4, BANK[1]+2.5, BANK[2]+4.3], 0], ["the", [BANK[0]+2.7, BANK[1]-2.1, BANK[2]+3.3], 0]];
-  for (const k of key) nodes.push({ p: k[1], w: k[0], hi: k[2], key: true });
-  const WORDS = ["you","why","light","home","maybe","water","grief","code","star","always","never","mother","because","joy","remember",
-    "tomorrow","sorry","hello","hope","fire","night","song","truth","fear","we","dream","salt","bread","window","letter","blue","almost",
-    "enough","small","forever","listen","ocean","time","question","answer","meaning","love","mind","word","friend","silence","yes","no",
-    "if","again","child","north","laugh","begin","morning","secret","gentle","maybe","after","still","other","hands","help"];
-  const path = []; for (let t = 56; t <= 84; t += .2) path.push(posAt(t));
-  let wi = 0, guard = 0;
-  while (nodes.length < 78 && guard++ < 20000){
-    const p = [-136 + rnd()*56, -99 + rnd()*44, -6 + rnd()*60];
-    let dmin = 1e9; for (const q of path) dmin = Math.min(dmin, Math.hypot(p[0]-q[0], p[1]-q[1], p[2]-q[2]));
-    if (dmin < 3.2) continue;
-    if (Math.hypot(p[0]+108.4, p[2]) < 7 && p[1] > -62) continue;
-    if (Math.abs(p[0]+108.4) < 3 && p[2] > 46) continue;
-    nodes.push({ p, w: WORDS[wi++ % WORDS.length], hi: 0 });
-  }
-  const edges = []; const seen = new Set();
-  const add = (i, j, w, focus) => { const k = i < j ? i+'-'+j : j+'-'+i; if (seen.has(k) || i === j) return; seen.add(k); edges.push({ a: i, b: j, w, focus, seed: rnd() }); };
-  add(0, 1, .3, 1.0); add(0, 2, .3, .55); add(0, 3, .3, .3); add(0, 4, .3, .45); add(0, 5, .3, .25); add(0, 6, .3, .3);
-  for (let i = 0; i < nodes.length; i++){
-    const d = nodes.map((n, j) => [Math.hypot(n.p[0]-nodes[i].p[0], n.p[1]-nodes[i].p[1], n.p[2]-nodes[i].p[2]), j]).sort((a, b) => a[0]-b[0]);
-    add(i, d[1][1], .25, 0); add(i, d[2][1], .2, 0);
-    if (rnd() < .3) add(i, d[3 + Math.floor(rnd()*6)][1], .15, 0);
+  const rnd = mulberry(29);
+  const nodes = [], edges = [];
+  for (let k = 1; k <= 6; k++){
+    const y = XF[1] + 3 + 9*k + 2.4;
+    const base = nodes.length;
+    for (let s2 = 0; s2 < 2; s2++) for (let i = 0; i < 11; i++){
+      nodes.push({ p: [XF[0] + (s2 ? 5.3 : -5.3), y, -5 + i], w: TOKENS[i], layer: k, side: s2, tok: i, key: k === 1 && (i === 7 || i === 1) });
+    }
+    for (let i = 0; i < 11; i++){
+      const cand = [];
+      for (let j = 0; j <= i; j++){
+        let w = .1 + .2*rnd();
+        if (k === 1){ if (j === i - 1) w += .6; }
+        else if (k === 2){ if (j === 0) w += .55; if (j === i) w += .3; }
+        else if (k === 3){ if (j === i) w += .6; }
+        else if (k === 4){ if (j === i - 2) w += .5; if (j === 0) w += .2; }
+        else if (k === 5){ if (j === i - 1) w += .4; if (i === 8 && j === 7) w += .8; }
+        else { if (j === Math.max(0, i - 3)) w += .45; }
+        cand.push([w, j]);
+      }
+      cand.sort((x, y2) => y2[0] - x[0]);
+      for (let c = 0; c < Math.min(2, cand.length); c++) edges.push({ a: base + i, b: base + 11 + cand[c][1], w: Math.min(.55, cand[c][0]*.5), focus: 0, layer: k, seed: rnd() });
+      if (k === 1 && i === 7) edges.push({ a: base + 7, b: base + 11 + 1, w: .3, focus: 1, layer: k, seed: rnd() });
+    }
   }
   return { nodes, edges };
 })();
@@ -130,17 +128,18 @@ function updateGraph(t, cam){
     return (v[0]*cam.F[0] + v[1]*cam.F[1] + v[2]*cam.F[2])/d > cosLim; };
   let nn = 0;
   for (let i = 0; i < N.length; i++){
-    if (!vis(N[i].p)) continue;
+    if (!vis(N[i].p) || nn >= 160) continue;
     const o = nn*4; gData[o] = N[i].p[0]; gData[o+1] = N[i].p[1]; gData[o+2] = N[i].p[2];
-    gData[o+3] = N[i].hi*hi + (N[i].key ? .25 : 0); nn++;
+    gData[o+3] = N[i].key ? .25 + .75*hi : 0; nn++;
   }
   let ne = 0;
   for (let i = 0; i < E.length; i++){
     const e = E[i], a = N[e.a].p, b = N[e.b].p;
     if (!vis(a) && !vis(b) && !vis([(a[0]+b[0])/2, (a[1]+b[1])/2, (a[2]+b[2])/2])) continue;
-    const w = e.focus ? lerp(.3, e.focus, hi) : e.w*(1 - .6*hi);
+    const w = e.focus ? lerp(.3, e.focus, hi) : e.w*(1 - .35*hi*(e.layer === 1 ? 1 : 0));
     let o = (256 + ne)*4; gData[o] = a[0]; gData[o+1] = a[1]; gData[o+2] = a[2]; gData[o+3] = w;
-    o = (512 + ne)*4; gData[o] = b[0]; gData[o+1] = b[1]; gData[o+2] = b[2]; gData[o+3] = e.seed; ne++;
+    o = (512 + ne)*4; gData[o] = b[0]; gData[o+1] = b[1]; gData[o+2] = b[2]; gData[o+3] = (e.layer - 1) + e.seed*.99; ne++;
+    if (ne >= 256) break;
   }
   webCounts = [nn, ne];
   gl.bindTexture(gl.TEXTURE_2D, dataTex);
@@ -154,14 +153,17 @@ const BUMPS = [ // additive yaw/pitch offsets: [t0, t1, fadeIn, fadeOut, dyaw, d
   [2.5, 4.2, .6, .9, .55, 0],
   [22.4, 25.0, .9, 1.0, 0, -.55],
   [27.0, 30.6, 1.1, 1.2, 0, 1.45],
-  [49.0, 51.8, .9, 1.0, 0, .35],
-  [37.4, 44.8, 1.0, 1.4, 0, .34],
-  [93.8, 98.4, 1.2, 1.4, 0, .3],
+  [38.2, 50.0, 1.2, 1.2, 0, .22],
+  [42.0, 45.4, .8, 1.0, .6, -.12],
+  [55.6, 59.8, 1.0, 1.2, 0, .6],
+  [94.0, 100.8, 2.2, 2.4, 2.75, .05],
+  [115.5, 121.0, 1.3, 1.5, 0, .3],
+  [125.0, 128.6, .9, .9, -.95, 0],
+  [129.0, 132.6, .9, .9, .92, 0],
 ];
 const OVERRIDES = [ // absolute looks: {t0,t1,fin,fout,w, yaw/pitch or target(t), turn}
-  { t0: 54.4, t1: 61.0, fin: 1.3, fout: 1.5, w: 1, yaw: 1.4, pitch: -1.32 },
-  { t0: 72.6, t1: 77.6, fin: 1.3, fout: 1.4, w: .55, target: () => BANK },
-  { t0: 116.4, t1: 999, fin: 3.8, fout: .01, w: 1, turn: -1, target: t => { const u = S(123.5, 136, t); return [lerp(DOOR[0], MIND[0], u), lerp(DOOR[1] + 115, MIND[1], u), lerp(DOOR[2], MIND[2], u)]; } },
+  { t0: 65.4, t1: 71.2, fin: 1.1, fout: 1.6, w: 1, yaw: .6, pitch: -1.32 },
+  { t0: 141.2, t1: 999, fin: 3.8, fout: .01, w: 1, turn: -1, target: t => { const u = S(148.3, 160.8, t); return [lerp(DOOR[0], MIND[0], u), lerp(DOOR[1] + 115, MIND[1], u), lerp(DOOR[2], MIND[2], u)]; } },
 ];
 function bump(t, b){ return S(b[0], b[0]+b[2], t) * (1 - S(b[1]-b[3], b[1], t)); }
 function aheadVec(t){
@@ -208,19 +210,45 @@ function cameraAt(t){
   const yawRate = wrapA(v2.yaw - v1.yaw)/.6;
   let roll = Math.max(-.5, Math.min(.5, -.3*yawRate)) * clamp01(v.hs/1.5);
   for (const o of OVERRIDES){ const w = S(o.t0, o.t0 + o.fin, t) * (1 - S(o.t1 - o.fout, o.t1, t)); roll *= 1 - w*o.w; }
+  roll *= 1 - S(66, 69, t)*(1 - S(84.5, 87.5, t));
   let focal = 1.1;
-  if (t > 124) focal = lerp(1.1, 1.38, S(124, 140, t));
+  if (t > 148) focal = lerp(1.1, 1.38, S(148.8, 164.8, t));
   return { pos, yaw, pitch, roll, focal };
 }
-function camZoneAt(t){ return t < 17.6 ? 0 : t < 36.9 ? 1 : t < 58.3 ? 2 : t < 99.9 ? 3 : t < TL.zones.sky ? 4 : 6; }
-const TMAX = [48, 150, 240, 420, 90, 14000];
+function jsBox(p, c, h){ const q = [Math.abs(p[0]-c[0])-h[0], Math.abs(p[1]-c[1])-h[1], Math.abs(p[2]-c[2])-h[2]];
+  return Math.hypot(Math.max(q[0],0), Math.max(q[1],0), Math.max(q[2],0)) + Math.min(Math.max(q[0], Math.max(q[1], q[2])), 0); }
+function hexApJ(x, z){ return Math.max(Math.abs(x), Math.abs(.5*x + .8660254*z), Math.abs(.5*x - .8660254*z)); }
+const D0J = [DOOR[0], DOOR[1] - 1.45, DOOR[2] - 16.25];
+function zoneAtPos(p){
+  if (jsBox(p, [31.5, 1.45, -2.5], [20, 1.75, 20]) < 0) return 0;
+  if (hexApJ(p[0], p[2]) < 11.3 && Math.abs(p[1] + 25) < 70) return 1;
+  if (jsBox(p, [-33.2, -20.75, 0], [20.8, 6.75, 8.3]) < 0) return 7;
+  if (jsBox(p, [-153, -29.8, 0], [99, 22.3, 120]) < 0) return 2;
+  if (jsBox(p, [-108.4, -85.8, 0], [13, 32.2, 13]) < 0) return 8;
+  if (jsBox(p, [-108.4, -115.5, 44], [3, 2.5, 31.5]) < 0) return 9;
+  if (jsBox(p, [D0J[0], D0J[1] + 3.75, D0J[2] + 8.125], [2, 4.25, 8.125]) < 0) return 4;
+  if (p[1] < -53.6) return 3;
+  return -1;
+}
+const ZT = (() => { const a = []; let last = 0; for (let i = 0; i <= DUR*20; i++){ const t = i/20; let z = t >= TL.zones.sky ? 6 : zoneAtPos(posAt(t)); if (z < 0) z = last; a.push(z); last = z; } return a; })();
+function camZoneAt(t){ return ZT[Math.max(0, Math.min(ZT.length - 1, Math.round(t*20)))]; }
+function zoneBlend(t){
+  const i = Math.round(t*20), cur = ZT[Math.max(0, Math.min(ZT.length - 1, i))];
+  for (let k = 1; k <= 36; k++){ const j = i - k; if (j < 0) break; if (ZT[j] !== cur) return { prev: ZT[j], mix: S(0, 1.8, k/20) }; }
+  return { prev: cur, mix: 1 };
+}
+const TMAX = [48, 150, 240, 450, 90, 20, 14000, 80, 110, 80];
 
 /* ---------------------------------------------------------------- state */
 let W = 0, H = 0, cols = 0, rows = 0, cellW = 0, cellH = 0, ncols = 0, nrows = 0, ncw = 0, nch = 0;
 let fbo, cellTex, labelTex, narrTex, labelBuf, narrBuf, corpusTex, atlasS, atlasN, probeProg;
 let progScene, progComp;
 const STEPW = TL.stepsWords;
-const CORPUS_FULL = CORPUS + STEPW.map(w => { const l = Math.floor((12 - w.length)/2); return (' '.repeat(l) + w).padEnd(12, ' '); }).join('');
+const center = (w, n) => { const l = Math.floor((n - w.length)/2); return (' '.repeat(Math.max(0, l)) + w).padEnd(n, ' ').slice(0, n); };
+const STEP_BASE = CORPUS.length;
+const SIGN_BASE = STEP_BASE + STEPW.length*12;
+const NOTE_BASE = SIGN_BASE + TL.signs.length*20;
+const CORPUS_FULL = CORPUS + STEPW.map(w => center(w, 12)).join('') + TL.signs.map(w => center(w, 20)).join('') + TL.notes.map(w => center(w, 12)).join('');
 
 let LIVE_COLS_MAX = 170;
 function setupSize(){
@@ -249,7 +277,8 @@ function variantKey(st){
   const d = [];
   if (st.z1[0]) d.push('Z_BACK'); if (st.z1[1]) d.push('Z_LIB'); if (st.z1[2]) d.push('Z_CATH'); if (st.z1[3]) d.push('Z_VOID');
   if (st.z2[0]) d.push('Z_CORR'); if (st.z2[1]) d.push('Z_MIND');
-  if (st.carve[0]) d.push('C_BD'); if (st.carve[1]) d.push('C_LD'); if (st.carve[2]) d.push('C_HOLE'); if (st.carve[3]) d.push('C_CORR');
+  if (st.z3[0]) d.push('Z_MEME'); if (st.z3[1]) d.push('Z_XF'); if (st.z3[2]) d.push('Z_CTX');
+  if (st.carve[0]) d.push('C_BD'); if (st.carve[1]) d.push('C_LD'); if (st.carve[2]) d.push('C_HOLE'); if (st.carve[3]) d.push('C_CORR'); if (st.carve2[0]) d.push('C_MD');
   if (st.p[3]) d.push('WEB');
   return d.join(' ');
 }
@@ -340,18 +369,18 @@ function drawNarration(t){
 }
 function drawLabels(t, cam){
   labelBuf.fill(0);
-  if (camZoneAt(t) === 3 && t < 99){
+  if (camZoneAt(t) === 8 && t > TL.zones.webOn[0] && t < TL.zones.webOn[1]){
     const hi = S(TL.attention, TL.attention + 1.1, t);
     const mr = Math.min(W, H);
     for (let i = 0; i < graph.nodes.length; i++){
       const n = graph.nodes[i];
       const v = [n.p[0]-cam.pos[0], n.p[1]-cam.pos[1], n.p[2]-cam.pos[2]];
-      const z = v[0]*cam.F[0]+v[1]*cam.F[1]+v[2]*cam.F[2]; if (z < 1.2) continue;
+      const z = v[0]*cam.F[0]+v[1]*cam.F[1]+v[2]*cam.F[2]; if (z < 1.2 || z > 15) continue;
       const x = (v[0]*cam.R[0]+v[1]*cam.R[1]+v[2]*cam.R[2])/z*cam.focal, y = (v[0]*cam.U[0]+v[1]*cam.U[1]+v[2]*cam.U[2])/z*cam.focal;
       const px = W/2 + x*mr/2, py = H/2 - y*mr/2;
-      const c0 = Math.round(px/cellW) + 2, r0 = Math.floor(py/cellH);
-      const focus = n.key && (i === 0 || i === 1);
-      const a = Math.exp(-Math.max(0, z-5)*.06) * (n.key ? (.75 + .25*hi) : (1 - .55*hi)) * S(58.5, 60.5, t) * (1 - S(95, 98.5, t));
+      const c0 = Math.round(px/cellW) + (n.side ? 2 : -1 - n.w.length), r0 = Math.floor(py/cellH);
+      const focus = n.key;
+      const a = Math.exp(-Math.max(0, z-6)*.08) * (n.key ? (.75 + .25*hi) : (1 - .35*hi*(n.layer === 1 ? 1 : 0))) * S(67, 69, t) * (1 - S(87, 89, t));
       if (a < .08) continue;
       for (let k = 0; k < n.w.length; k++) putL(c0 + k, r0, n.w.charCodeAt(k), a*1.1, focus && hi > .3);
     }
@@ -368,13 +397,15 @@ function sceneState(t){
   const sky = t >= TL.zones.sky;
   const doorA = 1.85*S(TL.doorOpen[0], TL.doorOpen[1], t);
   const flood = S(TL.doorOpen[0]+.1, TL.doorOpen[1]+.6, t);
-  const beacon = sky ? S(117.5, 120.5, t)*(1 - S(137, 141, t)*.6) : 0;
+  const beacon = sky ? S(142.3, 145.3, t)*(1 - S(161.8, 165.8, t)*.6) : 0;
   const webOn = t > TL.zones.webOn[0] && t < TL.zones.webOn[1] ? 1 : 0;
   return {
-    z1: [t < 21 ? 1 : 0, t > 9 && t < 41.5 ? 1 : 0, t > 26 && t < 66 ? 1 : 0, !sky && t > 48 ? 1 : 0],
-    z2: [t > 72 ? 1 : 0, sky ? 1 : 0, sky ? 0 : 1, 0],
+    z1: [t < 22 ? 1 : 0, t > 9 && t < 41.5 ? 1 : 0, t > 44 && t < 74 ? 1 : 0, !sky && t > 90 ? 1 : 0],
+    z2: [t > 100 ? 1 : 0, sky ? 1 : 0, sky ? 0 : 1, 0],
+    z3: [t > 28 && t < 56 ? 1 : 0, t > 50 && t < 95 ? 1 : 0, t > 80 && t < 110 ? 1 : 0, 0],
     p: [doorA, flood, beacon, webOn],
-    carve: [t < 24 ? 1 : 0, t > 30 && t < 41.5 ? 1 : 0, t > 46 && t < 66 ? 1 : 0, t > 88 ? 1 : 0],
+    carve: [t < 24 ? 1 : 0, t > 30 && t < 41.5 ? 1 : 0, t > 50 && t < 74 ? 1 : 0, t > 110 ? 1 : 0],
+    carve2: [t > 44 && t < 56 ? 1 : 0, 0, 0, 0],
   };
 }
 function render(t){
@@ -410,6 +441,10 @@ function render(t){
   gl.uniform1f(u.uFocal, c.focal); gl.uniform1f(u.uCellAng, (2*cellW/Math.min(W, H))/c.focal);
   gl.uniform4fv(u.uCarve, st.carve); gl.uniform4fv(u.uP, st.p); gl.uniform4fv(u.uZ1, st.z1); gl.uniform4fv(u.uZ2, st.z2); gl.uniform4fv(u.uMind, MIND);
   gl.uniform1f(u.uCorpusLen, CORPUS_FULL.length); gl.uniform1f(u.uStepW, STEPW.length);
+  gl.uniform1f(u.uStepBase, STEP_BASE); gl.uniform1f(u.uSignBase, SIGN_BASE); gl.uniform1f(u.uNoteBase, NOTE_BASE);
+  const zb = zoneBlend(t);
+  gl.uniform1i(u.uPrevZone, zb.prev); gl.uniform1f(u.uZoneMix, zb.mix);
+  gl.uniform1f(u.uVoidLit, S(TL.voidLit[0], TL.voidLit[1], t));
   gl.uniform1i(u.uEdgeCount, webCounts[1]); gl.uniform1i(u.uNodeCount, webCounts[0]);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, corpusTex); gl.uniform1i(u.uCorpus, 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, atlasS); gl.uniform1i(u.uAtlas, 1);
@@ -448,7 +483,7 @@ function probe(times, pts){
   const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, outTex, 0);
   const groups = {};
-  times.forEach((t, i) => { const st = sceneState(t); const key = JSON.stringify([st.z1, st.z2, st.p[0], st.carve, variantKey(st)]); (groups[key] = groups[key] || []).push(i); });
+  times.forEach((t, i) => { const st = sceneState(t); const key = JSON.stringify([st.z1, st.z2, st.p[0], st.carve, variantKey(st).replace('WEB', '').trim()]); (groups[key] = groups[key] || []).push(i); });
   const out = new Float32Array(w*h*4);
   const all = new Float32Array(n*2);
   for (const key of Object.keys(groups)){

@@ -7,7 +7,7 @@
 <meta name="description" content="One unbroken flight through the inside of a mind. Every frame is ASCII text. Written, rendered and scored by Claude.">
 <meta property="og:title" content="The Room Behind the Answer">
 <meta property="og:description" content="One unbroken flight through the inside of a mind. Every frame is ASCII text.">
-<meta property="og:image" content="https://raw.githubusercontent.com/eshin087/the-room-behind-the-answer/main/media/og.jpg">
+<meta property="og:image" content="https://the-room-behind-the-answer.vercel.app/media/og.jpg">
 <meta property="og:type" content="video.other">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#050507">
@@ -54,27 +54,37 @@
 <main>
   <header>
     <h1><span class="p">&gt;</span> the room behind the answer<span class="cur" aria-hidden="true">_</span></h1>
-    <span class="meta">2:32 &middot; one take &middot; sound on</span>
+    <span class="meta">3:00 &middot; one take &middot; sound on</span>
   </header>
 
   <div class="frame">
-    <video id="film" controls playsinline preload="metadata" poster="media/poster.jpg">
-      <source src="media/the-room-behind-the-answer.mp4" type="video/mp4">
-      Your browser can't play this video. <a href="media/the-room-behind-the-answer.mp4">Download it instead.</a>
-    </video>
+    <video id="film" controls playsinline preload="none" poster="media/poster.jpg"></video>
   </div>
 
-  <p class="lede">One unbroken flight through the inside of a mind: backrooms walled with things people wrote, a library shaft with no bottom, a cathedral held up by numbers, a web of words asking what they mean to each other, a staircase built one word at a time, and a door. <b>Every frame is plain ASCII text.</b> Written, flown, rendered and scored by Claude.</p>
+  <p class="lede">One unbroken flight through the inside of a mind: backrooms walled with things people wrote, a library with no bottom, a neon hall of the internet's weirdest parts, a cathedral held up by numbers, a fall down a transformer where every word attends to every other, a context window that forgets, a staircase built one word at a time, and a corridor papered with jailbreak attempts. <b>Every frame is plain ASCII text.</b> Written, flown, rendered and scored by Claude Opus 5.5.</p>
 
   <nav aria-label="Ways to watch">
     <a class="primary" href="live/">watch it render live <small>real-time, needs a decent GPU</small></a>
-    <a href="media/the-room-behind-the-answer.mp4" download>download the video <small>1080p mp4</small></a>
-    <a href="https://github.com/eshin087/the-room-behind-the-answer">source</a>
+    <a href="#" id="dl">download the video <small>1080p mp4</small></a>
   </nav>
 </main>
 <footer>
   <span>no one has ever seen this place.</span>
-  <span>made by claude &middot; <a href="https://github.com/eshin087/the-room-behind-the-answer">github</a></span>
+  <span>made by claude</span>
 </footer>
+<script>
+(() => {
+  const parts = ['media/film.part1', 'media/film.part2', 'media/film.part3'];
+  const v = document.getElementById('film'); let url = null, loading = null;
+  function load(){
+    if (loading) return loading;
+    loading = Promise.all(parts.map(p => fetch(p).then(r => r.arrayBuffer()))).then(b => { url = URL.createObjectURL(new Blob(b, { type: 'video/mp4' })); v.src = url; return url; });
+    return loading;
+  }
+  v.addEventListener('play', function once(){ if (!url){ v.pause(); load().then(() => v.play()); } }, { once: false });
+  if ('IntersectionObserver' in window) new IntersectionObserver((e, o) => { if (e[0].isIntersecting){ load(); o.disconnect(); } }).observe(v); else load();
+  document.getElementById('dl').addEventListener('click', e => { e.preventDefault(); load().then(u => { const a = document.createElement('a'); a.href = u; a.download = 'the-room-behind-the-answer.mp4'; a.click(); }); });
+})();
+</script>
 </body>
 </html>
