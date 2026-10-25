@@ -4,6 +4,10 @@ A 3-minute, single-take flight through the inside of a mind. **Every frame is pl
 
 Written, flown, rendered and scored by Claude Opus 5.5.
 
+**[Watch the film](https://the-room-behind-the-answer.vercel.app)** (3 minutes, sound on).
+
+<a href="https://the-room-behind-the-answer.vercel.app"><img src="media/poster.jpg" alt="Poster frame from the film: a square room drawn entirely in green ASCII characters on black, its walls dense with letters and symbols, with a dark opening at the center" width="100%"></a>
+
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Feshin087%2Fthe-room-behind-the-answer&project-name=the-room-behind-the-answer)
 
 | | |
